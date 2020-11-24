@@ -24,14 +24,15 @@ Caching is enabled by specifying a database directory using the `--store` parame
 Lotus-cpr will look for blocks in this database before fetching from upstream. Any blocks retrieved
 from an upstream source will be stored in the database to satisfy future requests.
 
-To further reduce load on the Lotus node blocks may also be retrived from an S3 cache. Use the
-`--s3-bucket` parameter to specify the name of the bucket containing the blocks. When enabled
-Lotus-cpr will consult the local database first, then S3 and finally revert to direct node access.
+To further reduce load on the Lotus node blocks may also be retrived from a blockstore webserver
+serving block data via HTTP. Use the `--blockstore-base` parameter to specify the base URL of the
+blockstore. When enabled Lotus-cpr will consult the local database first, then the blockstore and
+finally revert to direct node access.
 
 
                               +-----------+               +-----------+                  +-----------+
                               |           |               |           |                  |           |
-    client --- json/rpc ----> | lotus-cpr | -- block? --> |   gondb   | -+--- http ----> |     S3    | 
+    client --- json/rpc ----> | lotus-cpr | -- block? --> |   gondb   | -+--- http ----> |   Store   | 
                               |           |               |           |  |               |           |
                               +-----------+               +-----------+  |               +-----------+
                                     |                                    |
@@ -41,8 +42,12 @@ Lotus-cpr will consult the local database first, then S3 and finally revert to d
                                                                                          |           |
                                                                                          +-----------+
                                              
-The gonudb and S3 caches only store immutable block data and Lotus-cpr will only attempt to use this data
+The gonudb and blockstore caches only store immutable block data and Lotus-cpr will only attempt to use this data
 when it is sure that the request requires no other state.
+
+Lotus-cpr expects blockstores to make raw data for blocks available using the following URL pattern:
+
+	{base_url}/{block_cid}/data.raw
 
 
 Command line options:
