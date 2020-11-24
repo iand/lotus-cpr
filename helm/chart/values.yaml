@@ -1,0 +1,55 @@
+
+image: "iandavis/lotus-cpr:latest"
+imagePullPolicy: Always
+
+# port to listen on within the pod
+listenPort: 33111
+
+# lotus api multiaddr
+lotusAPI: "/ip4/127.0.0.1/tcp/1234/http"
+
+# Name of a secret containing a jwt token under key jwt-ro-privs-token
+lotusAPITokenSecret: ""
+
+# Base URL of a web server that serves blocks
+blockstoreBaseURL: ""
+
+# Service used to access the proxy server
+service:
+  # Type of service
+  type: "LoadBalancer"
+
+  # The port to expose the proxy server RPC api
+  port: 33111
+
+  # Any additional labels to add to the load balancer
+  labels: {}
+
+  # Any additional annotations to add to the load balancer
+  annotations: {}
+
+# Resources for pods
+resources:
+  limits:
+    cpu: "2000m"
+    memory: "2Gi"
+  requests:
+    cpu: "2000m"
+    memory: "2Gi"
+
+# Size and type of disk volume used for cache
+volume:
+  size: "2000Gi"
+  storageClassName: "standard"
+
+# Log output verbosity, higher is more verbose
+logLevel: 0
+
+# Whether to color and make logs human readable
+humanizeLogs: 1
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
