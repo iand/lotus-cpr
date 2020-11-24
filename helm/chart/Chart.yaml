@@ -1,0 +1,6 @@
+apiVersion: v2
+description: Caching proxy for Lotus filecoin nodes
+name: lotus-cpr
+type: application
+appVersion: "1.0"
+version: 0.1.0
