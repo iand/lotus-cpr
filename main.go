@@ -88,7 +88,7 @@ func main() {
 	}
 }
 
-var logger = logfmtr.New()
+var logger = logfmtr.New().V(LogLevelInfo)
 
 func run(cc *cli.Context) error {
 	ctx, cancel := context.WithCancel(cc.Context)
@@ -109,11 +109,11 @@ func run(cc *cli.Context) error {
 	defer closer()
 
 	caches := []BlockCache{
-		NewNodeBlockCache(api, logger.WithName("node")),
+		NewNodeBlockCache(api, logfmtr.NewNamed("node")),
 	}
 
 	if cc.String("blockstore-baseurl") != "" {
-		s3Cache := NewHttpBlockCache(cc.String("blockstore-baseurl"), logger.WithName("http"))
+		s3Cache := NewHttpBlockCache(cc.String("blockstore-baseurl"), logfmtr.NewNamed("http"))
 
 		upstream := caches[len(caches)-1]
 		s3Cache.SetUpstream(upstream)
@@ -134,7 +134,7 @@ func run(cc *cli.Context) error {
 			}
 		}()
 
-		dbCache := NewDBBlockCache(s, logger.WithName("db"))
+		dbCache := NewDBBlockCache(s, logfmtr.NewNamed("db"))
 
 		upstream := caches[len(caches)-1]
 		dbCache.SetUpstream(upstream)
