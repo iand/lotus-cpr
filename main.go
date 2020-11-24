@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -25,8 +24,9 @@ import (
 )
 
 const (
-	LogLevelDiagnostics = 1 // log level increment for diagnostics logging
-	LogLevelTrace       = 2 // log level increment for verbose tracing
+	LogLevelInfo        = 1 // log level increment for informational logging
+	LogLevelDiagnostics = 2 // log level increment for diagnostics logging
+	LogLevelTrace       = 3 // log level increment for verbose tracing
 )
 
 func main() {
@@ -38,33 +38,44 @@ func main() {
 			&cli.IntFlag{
 				Name:    "log-level",
 				Aliases: []string{"ll"},
-				Usage:   fmt.Sprintf("Set verbosity of logs to `LEVEL` (%d=diagnostics, %d=trace).", LogLevelDiagnostics, LogLevelTrace),
-				Value:   0,
+				Usage:   fmt.Sprintf("Set verbosity of logs to `LEVEL` (0: off, %d: info, %d:diagnostics, %d:trace).", LogLevelInfo, LogLevelDiagnostics, LogLevelTrace),
+				Value:   1,
+				EnvVars: []string{"LOTUS_CPR_LOG_LEVEL"},
 			},
 			&cli.BoolFlag{
 				Name:    "humanize-logs",
 				Aliases: []string{"hl"},
 				Usage:   "Use humanized and colorized log output.",
 				Value:   false,
+				EnvVars: []string{"LOTUS_CPR_HUMANIZE_LOGS"},
 			},
 			&cli.StringFlag{
-				Name:     "api",
-				Usage:    "Token and multiaddress of Lotus node (format: <oauth_token>:/ip4/127.0.0.1/tcp/1234/http).",
-				EnvVars:  []string{"FULLNODE_API_INFO"},
+				Name:    "api",
+				Usage:   "Multiaddress of Lotus node.",
+				EnvVars: []string{"LOTUS_CPR_API"},
+				Value:   "/ip4/127.0.0.1/tcp/1234/http",
+			},
+			&cli.StringFlag{
+				Name:     "api-token",
+				Usage:    "Read only API token for Lotus node.",
+				EnvVars:  []string{"LOTUS_CPR_API_TOKEN"},
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:  "store",
-				Usage: "Path to directory containing gonudb store.",
+				Name:    "store",
+				Usage:   "Path to directory containing gonudb store.",
+				EnvVars: []string{"LOTUS_CPR_STORE_PATH"},
 			},
 			&cli.StringFlag{
-				Name:  "s3-bucket",
-				Usage: "Name of S3 bucket containing filecoin blocks.",
+				Name:    "blockstore-baseurl",
+				Usage:   "Base URL of a web server that serves blocks (urls follow pattern: {blockstore-baseurl}/{block_cid}/data.raw)",
+				EnvVars: []string{"LOTUS_CPR_BLOCKSTORE_BASEURL"},
 			},
 			&cli.StringFlag{
-				Name:  "listen",
-				Usage: "Address to start the jsonrpc server on.",
-				Value: ":33111",
+				Name:    "listen",
+				Usage:   "Address to start the jsonrpc server on.",
+				EnvVars: []string{"LOTUS_CPR_LISTEN"},
+				Value:   ":33111",
 			},
 		},
 		Action:          run,
@@ -91,7 +102,7 @@ func run(cc *cli.Context) error {
 	}
 	logfmtr.UseOptions(loggerOpts)
 
-	api, closer, err := connect(ctx, cc.String("api"))
+	api, closer, err := connect(ctx, cc.String("api"), cc.String("api-token"))
 	if err != nil {
 		return fmt.Errorf("failed to connect to lotus: %w", err)
 	}
@@ -101,14 +112,14 @@ func run(cc *cli.Context) error {
 		NewNodeBlockCache(api, logger.WithName("node")),
 	}
 
-	if cc.String("s3-bucket") != "" {
-		s3Cache := NewS3BlockCache(cc.String("s3-bucket"), logger.WithName("s3"))
+	if cc.String("blockstore-baseurl") != "" {
+		s3Cache := NewHttpBlockCache(cc.String("blockstore-baseurl"), logger.WithName("http"))
 
 		upstream := caches[len(caches)-1]
 		s3Cache.SetUpstream(upstream)
 
 		caches = append(caches, s3Cache)
-		logger.Info("Added s3 cache", "bucket", cc.String("s3-bucket"))
+		logger.Info("Added http blockstore", "base_url", cc.String("blockstore-baseurl"))
 	}
 
 	if cc.String("store") != "" {
@@ -214,22 +225,15 @@ func openStore(ctx context.Context, path string) (*gonudb.Store, error) {
 	}
 
 	logger.Info("Opening store", "path", path)
-	s, err := gonudb.OpenStore(datPath, keyPath, logPath, &gonudb.StoreOptions{Logger: logger.WithName("gonudb").V(1)})
+	s, err := gonudb.OpenStore(datPath, keyPath, logPath, &gonudb.StoreOptions{Logger: logger.WithName("gonudb").V(LogLevelDiagnostics)})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open store: %w", err)
 	}
 	return s, nil
 }
 
-func connect(ctx context.Context, tokenMaddr string) (api.FullNode, jsonrpc.ClientCloser, error) {
-	toks := strings.Split(tokenMaddr, ":")
-	if len(toks) != 2 {
-		return nil, nil, fmt.Errorf("invalid api tokens, expected <token>:<maddr>, got: %s", tokenMaddr)
-	}
-	rawtoken := toks[0]
-	rawaddr := toks[1]
-
-	parsedAddr, err := ma.NewMultiaddr(rawaddr)
+func connect(ctx context.Context, apiAddr, apiToken string) (api.FullNode, jsonrpc.ClientCloser, error) {
+	parsedAddr, err := ma.NewMultiaddr(apiAddr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse listen address: %w", err)
 	}
@@ -239,12 +243,12 @@ func connect(ctx context.Context, tokenMaddr string) (api.FullNode, jsonrpc.Clie
 		return nil, nil, fmt.Errorf("dial multiaddress: %w", err)
 	}
 
-	api, closer, err := client.NewFullNodeRPC(ctx, apiURI(addr), apiHeaders(rawtoken))
+	api, closer, err := client.NewFullNodeRPC(ctx, apiURI(addr), apiHeaders(apiToken))
 	if err != nil {
 		return nil, nil, fmt.Errorf("new full node rpc: %w", err)
 	}
 
-	logger.Info("Connected to lotus", "addr", rawaddr)
+	logger.Info("Connected to lotus", "addr", apiAddr)
 	return api, closer, nil
 }
 
