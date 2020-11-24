@@ -16,6 +16,6 @@ These are changes that will probably be included in the next release.
  
 ### Removed
 
-## [v0.1.0] - 2020-11-23
+## [v0.1.0] - 2020-11-24
 
 Initial release
