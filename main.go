@@ -227,7 +227,7 @@ func openStore(ctx context.Context, path string) (*gonudb.Store, error) {
 	logger.Info("Opening store", "path", path)
 	s, err := gonudb.OpenStore(datPath, keyPath, logPath, &gonudb.StoreOptions{Logger: logger.WithName("gonudb").V(LogLevelDiagnostics)})
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open store: %w", err)
+		return nil, fmt.Errorf("failed to open store: %w", err)
 	}
 	return s, nil
 }
