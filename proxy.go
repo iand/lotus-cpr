@@ -23,7 +23,6 @@ type BlockCache interface {
 	Has(context.Context, cid.Cid) (bool, error)
 	Get(context.Context, cid.Cid) (blocks.Block, error)
 	SetUpstream(BlockCache)
-	LogStats(logr.Logger)
 }
 
 type Proxy struct {
@@ -39,7 +38,7 @@ func NewAPIProxy(node api.FullNode, cache BlockCache, logger logr.Logger) *Proxy
 	return &Proxy{
 		node:    node,
 		cache:   cache,
-		tlogger: logger.WithName("proxy").V(LogLevelTrace),
+		tlogger: logger.V(LogLevelTrace),
 	}
 }
 

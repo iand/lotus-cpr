@@ -29,6 +29,11 @@ const (
 	LogLevelTrace       = 3 // log level increment for verbose tracing
 )
 
+const (
+	diagLogInterval         = 5 * time.Minute // interval between logging metrics when diagnostics logging is enabled
+	metricReportingInterval = 2 * time.Second // interval between reporting metrics
+)
+
 func main() {
 	app := &cli.App{
 		Name:     "lotus-cpr",
@@ -77,6 +82,12 @@ func main() {
 				EnvVars: []string{"LOTUS_CPR_LISTEN"},
 				Value:   ":33111",
 			},
+			&cli.StringFlag{
+				Name:    "diag",
+				Usage:   "Address to start the diagnostics server on.",
+				EnvVars: []string{"LOTUS_CPR_DIAG"},
+				Value:   ":33112",
+			},
 		},
 		Action:          run,
 		HideHelpCommand: true,
@@ -102,6 +113,16 @@ func run(cc *cli.Context) error {
 	}
 	logfmtr.UseOptions(loggerOpts)
 
+	// Init metric reporting if required
+	reportMetrics := false
+	dlogger := logfmtr.New().V(LogLevelDiagnostics)
+	if dlogger.Enabled() || cc.String("diag") != "" {
+		reportMetrics = true
+		if err := initMetricReporting(metricReportingInterval); err != nil {
+			return fmt.Errorf("failed to initialize metric reporting: %w", err)
+		}
+	}
+
 	api, closer, err := connect(ctx, cc.String("api"), cc.String("api-token"))
 	if err != nil {
 		return fmt.Errorf("failed to connect to lotus: %w", err)
@@ -113,12 +134,12 @@ func run(cc *cli.Context) error {
 	}
 
 	if cc.String("blockstore-baseurl") != "" {
-		s3Cache := NewHttpBlockCache(cc.String("blockstore-baseurl"), logfmtr.NewNamed("http"))
+		hCache := NewHttpBlockCache(cc.String("blockstore-baseurl"), "http")
 
 		upstream := caches[len(caches)-1]
-		s3Cache.SetUpstream(upstream)
+		hCache.SetUpstream(upstream)
 
-		caches = append(caches, s3Cache)
+		caches = append(caches, hCache)
 		logger.Info("Added http blockstore", "base_url", cc.String("blockstore-baseurl"))
 	}
 
@@ -134,7 +155,22 @@ func run(cc *cli.Context) error {
 			}
 		}()
 
-		dbCache := NewDBBlockCache(s, logfmtr.NewNamed("db"))
+		dbCache := NewDBBlockCache(s)
+
+		if reportMetrics {
+			go func() {
+				timer := time.NewTicker(2 * time.Second)
+				for {
+					select {
+					case <-timer.C:
+						dbCache.ReportMetrics(ctx)
+					case <-ctx.Done():
+						timer.Stop()
+						return
+					}
+				}
+			}()
+		}
 
 		upstream := caches[len(caches)-1]
 		dbCache.SetUpstream(upstream)
@@ -144,23 +180,7 @@ func run(cc *cli.Context) error {
 	}
 
 	rpcServer := jsonrpc.NewServer()
-	rpcServer.Register("Filecoin", NewAPIProxy(api, caches[len(caches)-1], logger))
-
-	dlogger := logfmtr.New().V(LogLevelDiagnostics)
-	if dlogger.Enabled() {
-		go func() {
-			for {
-				select {
-				case <-time.After(1 * time.Minute):
-					for i := range caches {
-						caches[i].LogStats(dlogger)
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	}
+	rpcServer.Register("Filecoin", NewAPIProxy(api, caches[len(caches)-1], logfmtr.NewNamed("proxy")))
 
 	// Set up a signal handler to cancel the context
 	go func() {
@@ -173,10 +193,57 @@ func run(cc *cli.Context) error {
 		}
 	}()
 
+	// Log metrics?
+	if dlogger.Enabled() {
+		go func() {
+			timer := time.NewTicker(diagLogInterval)
+			ml := NewMetricLogger(dlogger)
+			for {
+				select {
+				case <-timer.C:
+					ml.Log()
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				}
+			}
+		}()
+	}
+
+	// Serve metrics via http?
+	if cc.String("diag") != "" {
+		diagListener, err := net.Listen("tcp", cc.String("diag"))
+		if err != nil {
+			return fmt.Errorf("failed to listen on %q: %w", cc.String("diag"), err)
+		}
+
+		pe, err := registerPrometheusExporter("lotuscpr")
+		if err != nil {
+			return fmt.Errorf("failed to register prometheus exporter: %w", err)
+		}
+
+		diagMux := mux.NewRouter()
+		diagMux.Handle("/metrics", pe)
+
+		diagSrv := &http.Server{
+			Handler: diagMux,
+		}
+
+		go func() {
+			<-ctx.Done()
+			if err := diagSrv.Shutdown(context.Background()); err != nil {
+				logger.Error(err, "failed to shut down diagnostics server")
+			}
+		}()
+
+		logger.Info("Starting diagnostics server", "addr", cc.String("diag"))
+		go diagSrv.Serve(diagListener)
+	}
+
 	address := cc.String("listen")
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to listen on %q: %w", cc.String("listen"), err)
 	}
 
 	mux := mux.NewRouter()
@@ -194,6 +261,7 @@ func run(cc *cli.Context) error {
 		}
 	}()
 
+	logger.Info("Starting RPC server", "addr", cc.String("listen"))
 	return srv.Serve(listener)
 }
 

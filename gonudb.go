@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"io/ioutil"
 
 	"github.com/go-logr/logr"
@@ -10,6 +9,7 @@ import (
 	"github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-ipfs-blockstore"
+	"go.opencensus.io/stats"
 )
 
 var _ (BlockCache) = (*DBBlockCache)(nil)
@@ -17,84 +17,58 @@ var _ (BlockCache) = (*DBBlockCache)(nil)
 type DBBlockCache struct {
 	store    *gonudb.Store
 	upstream BlockCache
-	tlogger  logr.Logger // request tracing
-	stats    CacheStats
 }
 
-func NewDBBlockCache(s *gonudb.Store, logger logr.Logger) *DBBlockCache {
+func NewDBBlockCache(s *gonudb.Store) *DBBlockCache {
 	if logger == nil {
 		logger = logr.Discard()
 	}
 	return &DBBlockCache{
-		store:   s,
-		tlogger: logger.V(LogLevelTrace),
+		store: s,
 	}
 }
 
 func (d *DBBlockCache) Has(ctx context.Context, c cid.Cid) (bool, error) {
-	if d.tlogger.Enabled() {
-		d.tlogger.Info("Has", "block", c)
-	}
+	ctx = cacheContext(ctx, "gonudb")
 	cstr := c.String()
 	_, err := d.store.FetchReader(cstr)
 	if err != nil {
-		if d.tlogger.Enabled() {
-			if errors.Is(err, gonudb.ErrKeyNotFound) {
-				d.stats.Miss()
-				d.tlogger.Info("Not found in store", "block", c)
-			} else {
-				d.stats.Error()
-				d.tlogger.Error(err, "FetchReader failed", "block", c)
-			}
-		}
 		data, err := d.fillFromUpstream(ctx, c)
 		if err != nil {
-			if d.tlogger.Enabled() {
-				d.tlogger.Error(err, "Upstream fill failed", "block", c)
-			}
 			return false, err
 		}
 		return data != nil, nil
 	}
 
-	d.stats.Hit()
 	return true, nil
 }
 
 func (d *DBBlockCache) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	if d.tlogger.Enabled() {
-		d.tlogger.Info("Has", "block", c)
-	}
+	ctx = cacheContext(ctx, "gonudb")
+	reportEvent(ctx, getRequest)
+	stop := startTimer(ctx, getDuration)
+	defer stop()
+
 	cstr := c.String()
 	r, err := d.store.FetchReader(cstr)
 	if err != nil {
-		if errors.Is(err, gonudb.ErrKeyNotFound) {
-			d.stats.Miss()
-			if d.tlogger.Enabled() {
-				d.tlogger.Info("Not found in store", "block", c)
-			}
-		} else {
-			d.stats.Error()
-			if d.tlogger.Enabled() {
-				d.tlogger.Error(err, "FetchReader failed", "block", c)
-			}
-		}
 		data, err := d.fillFromUpstream(ctx, c)
 		if err != nil {
-			if d.tlogger.Enabled() {
-				d.tlogger.Error(err, "Upstream fill failed", "block", c)
-			}
+			reportEvent(ctx, getFailure)
 			return nil, err
 		}
+		reportEvent(ctx, getMiss)
+		reportSize(ctx, getSize, len(data))
 		return blocks.NewBlockWithCid(data, c)
 	}
 
 	buf, err := ioutil.ReadAll(r)
 	if err != nil {
-		d.stats.Error()
+		reportEvent(ctx, getFailure)
 		return nil, err
 	}
-	d.stats.Hit()
+	reportEvent(ctx, getHit)
+	reportSize(ctx, getSize, len(buf))
 	return blocks.NewBlockWithCid(buf, c)
 }
 
@@ -103,21 +77,18 @@ func (d *DBBlockCache) SetUpstream(u BlockCache) {
 }
 
 func (d *DBBlockCache) fillFromUpstream(ctx context.Context, c cid.Cid) ([]byte, error) {
+	reportEvent(ctx, fillRequest)
+	stop := startTimer(ctx, fillDuration)
+	defer stop()
+
 	if d.upstream == nil {
-		if d.tlogger.Enabled() {
-			d.tlogger.Info("No upstream to fill from", "block", c)
-		}
+		reportEvent(ctx, fillFailure)
 		return nil, blockstore.ErrNotFound
-	}
-	if d.tlogger.Enabled() {
-		d.tlogger.Info("Filling from upstream", "block", c)
 	}
 
 	blk, err := d.upstream.Get(ctx, c)
 	if err != nil {
-		if d.tlogger.Enabled() {
-			d.tlogger.Error(err, "Upstream fill failed", "block", c)
-		}
+		reportEvent(ctx, fillFailure)
 		return nil, err
 	}
 
@@ -125,21 +96,24 @@ func (d *DBBlockCache) fillFromUpstream(ctx context.Context, c cid.Cid) ([]byte,
 	// Only insert if the block data and cid match, since we can't delete from the store
 	chkc, err := c.Prefix().Sum(data)
 	if err != nil {
+		reportEvent(ctx, fillFailure)
 		return nil, err
 	}
 
 	if !chkc.Equals(c) {
+		reportEvent(ctx, fillFailure)
 		return nil, blocks.ErrWrongHash
 	}
 
 	if err := d.store.Insert(c.String(), data); err != nil {
-		if d.tlogger.Enabled() {
-			d.tlogger.Error(err, "Insert failed", "block", c)
-		}
+		reportEvent(ctx, fillFailure)
 	}
+	reportEvent(ctx, fillSuccess)
+	reportSize(ctx, fillSize, len(data))
 	return data, nil
 }
 
-func (d *DBBlockCache) LogStats(dlogger logr.Logger) {
-	d.stats.Log("db", dlogger)
+func (d *DBBlockCache) ReportMetrics(ctx context.Context) {
+	stats.Record(ctx, gonudbRecordCount.M(int64(d.store.RecordCount())))
+	stats.Record(ctx, gonudbRate.M(d.store.Rate()))
 }
