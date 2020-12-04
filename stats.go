@@ -258,7 +258,7 @@ func (l *MetricLogger) ExportMetrics(ctx context.Context, metrics []*metricdata.
 				l.logger.Info(lbl, "fills", c["fill_request_total"], "fill_bytes", c["fill_size_bytes_total"])
 			}
 		} else if _, exists := c["gonudb_record_count"]; exists {
-			l.logger.Info("gonusb", "records", c["gonudb_record_count"])
+			l.logger.Info("gonudb", "records", c["gonudb_record_count"])
 		}
 	}
 
