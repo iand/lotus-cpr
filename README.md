@@ -52,9 +52,11 @@ Lotus-cpr expects blockstores to make raw data for blocks available using the fo
 
 Command line options:
 
- - `--api` (required) Token and multiaddress of Lotus node (format: <oauth_token>:/ip4/127.0.0.1/tcp/1234/http)
+ - `--api` (required) Multiaddress of Lotus node (default: "/ip4/127.0.0.1/tcp/1234/http")
+ - `--api-token` (required) OAuth token for Lotus node
+ - `--listen` (required) Address to start the RPC server on (default: ":33111")
  - `--store` (optional) Path to directory containing gonudb store used to cache blocks.
- - `--s3-bucket` (optional) Bucket containing blocks from the filecoin chain.
+ - `--blockstore-baseurl` (optional) URL of http server containing blocks from the filecoin chain.
 
 
 ## Author
