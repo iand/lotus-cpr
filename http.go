@@ -18,11 +18,10 @@ type HttpBlockCache struct {
 	base     string
 	hc       *http.Client
 	upstream BlockCache
-	tlogger  logr.Logger // request tracing
-	stats    CacheStats
+	name     string
 }
 
-func NewHttpBlockCache(base string, logger logr.Logger) *HttpBlockCache {
+func NewHttpBlockCache(base string, name string) *HttpBlockCache {
 	if logger == nil {
 		logger = logr.Discard()
 	}
@@ -32,96 +31,70 @@ func NewHttpBlockCache(base string, logger logr.Logger) *HttpBlockCache {
 	}
 
 	return &HttpBlockCache{
-		base:    base,
-		hc:      &http.Client{},
-		tlogger: logger.V(LogLevelTrace),
+		base: base,
+		name: name,
+		hc:   &http.Client{},
 	}
 }
 
 func (bc *HttpBlockCache) Has(ctx context.Context, c cid.Cid) (bool, error) {
+	ctx = cacheContext(ctx, bc.name)
 	u := bc.base + c.String() + "/data.raw"
-	if bc.tlogger.Enabled() {
-		bc.tlogger.Info("Has", "block", c, "url", u)
-	}
 	resp, err := bc.hc.Head(u)
 	if err != nil {
-		bc.stats.Error()
-		if bc.tlogger.Enabled() {
-			bc.tlogger.Error(err, "Has failed", "block", c)
-		}
 		if bc.upstream == nil {
 			return false, err
-		}
-		if bc.tlogger.Enabled() {
-			bc.tlogger.Info("Fulfilling Has from upstream", "block", c)
 		}
 		return bc.upstream.Has(ctx, c)
 	}
 	if resp.StatusCode == 200 {
-		bc.stats.Hit()
 		return true, nil
 	}
-	bc.stats.Miss()
 
-	if bc.tlogger.Enabled() {
-		bc.tlogger.Info("Block not found", "block", c)
-	}
 	if bc.upstream == nil {
 		return false, nil
-	}
-	if bc.tlogger.Enabled() {
-		bc.tlogger.Info("Fulfilling has from upstream", "block", c)
 	}
 	return bc.upstream.Has(ctx, c)
 }
 
 func (bc *HttpBlockCache) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+	ctx = cacheContext(ctx, bc.name)
+	reportEvent(ctx, getRequest)
+	stop := startTimer(ctx, getDuration)
+	defer stop()
+
 	u := bc.base + c.String() + "/data.raw"
-	if bc.tlogger.Enabled() {
-		bc.tlogger.Info("Get", "block", c, "url", u)
-	}
 	resp, err := bc.hc.Get(u)
 	if err != nil {
-		bc.stats.Error()
-		if bc.tlogger.Enabled() {
-			bc.tlogger.Error(err, "Get failed", "block", c)
-		}
+		reportEvent(ctx, getFailure)
 		if bc.upstream == nil {
 			return nil, err
-		}
-		if bc.tlogger.Enabled() {
-			bc.tlogger.Info("Fulfilling get from upstream", "block", c)
 		}
 		return bc.upstream.Get(ctx, c)
 	}
 	defer resp.Body.Close()
 	buf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		reportEvent(ctx, getFailure)
+		if bc.upstream == nil {
+			return nil, err
+		}
+		return bc.upstream.Get(ctx, c)
 	}
 	if resp.StatusCode == 200 {
-		bc.stats.Hit()
+		reportEvent(ctx, getHit)
+		reportSize(ctx, getSize, len(buf))
 		return blocks.NewBlockWithCid(buf, c)
 	}
-	if bc.tlogger.Enabled() {
-		bc.tlogger.Info("Get failed", "block", c, "http_status", resp.StatusCode)
-	}
-	bc.stats.Miss()
+	reportEvent(ctx, getMiss)
 
 	if bc.upstream == nil {
 		return nil, blockstore.ErrNotFound
 	}
 
-	if bc.tlogger.Enabled() {
-		bc.tlogger.Info("Fulfilling get from upstream", "block", c)
-	}
 	return bc.upstream.Get(ctx, c)
 }
 
 func (bc *HttpBlockCache) SetUpstream(u BlockCache) {
 	bc.upstream = u
-}
-
-func (bc *HttpBlockCache) LogStats(dlogger logr.Logger) {
-	bc.stats.Log("http", dlogger)
 }

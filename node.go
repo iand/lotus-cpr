@@ -16,7 +16,6 @@ var _ (BlockCache) = (*NodeBlockCache)(nil)
 type NodeBlockCache struct {
 	node    api.FullNode
 	tlogger logr.Logger // request tracing
-	stats   CacheStats
 }
 
 func NewNodeBlockCache(node api.FullNode, logger logr.Logger) *NodeBlockCache {
@@ -30,56 +29,45 @@ func NewNodeBlockCache(node api.FullNode, logger logr.Logger) *NodeBlockCache {
 }
 
 func (n *NodeBlockCache) Has(ctx context.Context, c cid.Cid) (bool, error) {
-	if n.tlogger.Enabled() {
-		n.tlogger.Info("Has", "block", c)
-	}
+	ctx = cacheContext(ctx, "node")
 	has, err := n.node.ChainHasObj(ctx, c)
 	if err != nil {
 		if errors.Is(err, blockstore.ErrNotFound) {
-			n.stats.Miss()
 			return false, err
 		}
-		n.stats.Error()
 		if n.tlogger.Enabled() {
 			n.tlogger.Error(err, "Has failed", "block", c)
 		}
 		return false, err
 	}
 
-	if has {
-		n.stats.Hit()
-	} else {
-		n.stats.Miss()
-	}
-
 	return has, nil
 }
 
 func (n *NodeBlockCache) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	if n.tlogger.Enabled() {
-		n.tlogger.Info("Get", "block", c)
-	}
+	ctx = cacheContext(ctx, "node")
+	reportEvent(ctx, getRequest)
+	stop := startTimer(ctx, getDuration)
+	defer stop()
+
 	data, err := n.node.ChainReadObj(ctx, c)
 	if err != nil {
 		if errors.Is(err, blockstore.ErrNotFound) {
-			n.stats.Miss()
+			reportEvent(ctx, getMiss)
 			return nil, err
 		}
-		n.stats.Error()
+		reportEvent(ctx, getFailure)
 		if n.tlogger.Enabled() {
 			n.tlogger.Error(err, "Get failed", "block", c)
 		}
 		return nil, err
 	}
 
-	n.stats.Hit()
+	reportEvent(ctx, getHit)
+	reportSize(ctx, getSize, len(data))
 	return blocks.NewBlockWithCid(data, c)
 }
 
 func (n *NodeBlockCache) SetUpstream(u BlockCache) {
 	panic("Not supported")
-}
-
-func (n *NodeBlockCache) LogStats(dlogger logr.Logger) {
-	n.stats.Log("node", dlogger)
 }
