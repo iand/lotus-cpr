@@ -13,13 +13,9 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-jsonrpc"
-	"github.com/filecoin-project/lotus/api"
-	"github.com/filecoin-project/lotus/api/client"
 	"github.com/gorilla/mux"
 	"github.com/iand/gonudb"
 	"github.com/iand/logfmtr"
-	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/urfave/cli/v2"
 )
 
@@ -33,6 +29,8 @@ const (
 	diagLogInterval         = 5 * time.Minute // interval between logging metrics when diagnostics logging is enabled
 	metricReportingInterval = 2 * time.Second // interval between reporting metrics
 )
+
+var ErrLotusUnavailable = errors.New("upstream lotus server not available")
 
 func main() {
 	app := &cli.App{
@@ -110,7 +108,6 @@ func run(cc *cli.Context) error {
 		loggerOpts.Colorize = true
 	}
 	logfmtr.UseOptions(loggerOpts)
-
 	logger := logfmtr.New().V(LogLevelInfo)
 
 	// Init metric reporting if required
@@ -123,14 +120,14 @@ func run(cc *cli.Context) error {
 		}
 	}
 
-	api, closer, err := connect(ctx, cc.String("api"), cc.String("api-token"))
+	client, err := newAPIClient(cc.String("api"), cc.String("api-token"), logfmtr.NewNamed("client"))
 	if err != nil {
-		return fmt.Errorf("failed to connect to lotus: %w", err)
+		return fmt.Errorf("failed to create api client: %w", err)
 	}
-	defer closer()
+	defer client.Close()
 
 	caches := []BlockCache{
-		NewNodeBlockCache(api, logfmtr.NewNamed("node")),
+		NewNodeBlockCache(client, logfmtr.NewNamed("node")),
 	}
 
 	if cc.String("blockstore-baseurl") != "" {
@@ -181,7 +178,7 @@ func run(cc *cli.Context) error {
 	}
 
 	rpcServer := jsonrpc.NewServer()
-	rpcServer.Register("Filecoin", NewAPIProxy(api, caches[len(caches)-1], logfmtr.NewNamed("proxy")))
+	rpcServer.Register("Filecoin", NewAPIProxy(client, caches[len(caches)-1], logfmtr.NewNamed("proxy")))
 
 	// Set up a signal handler to cancel the context
 	go func() {
@@ -297,33 +294,4 @@ func openStore(ctx context.Context, path string) (*gonudb.Store, error) {
 		return nil, fmt.Errorf("failed to open store: %w", err)
 	}
 	return s, nil
-}
-
-func connect(ctx context.Context, apiAddr, apiToken string) (api.FullNode, jsonrpc.ClientCloser, error) {
-	parsedAddr, err := ma.NewMultiaddr(apiAddr)
-	if err != nil {
-		return nil, nil, fmt.Errorf("parse listen address: %w", err)
-	}
-
-	_, addr, err := manet.DialArgs(parsedAddr)
-	if err != nil {
-		return nil, nil, fmt.Errorf("dial multiaddress: %w", err)
-	}
-
-	api, closer, err := client.NewFullNodeRPC(ctx, apiURI(addr), apiHeaders(apiToken))
-	if err != nil {
-		return nil, nil, fmt.Errorf("new full node rpc: %w", err)
-	}
-
-	return api, closer, nil
-}
-
-func apiURI(addr string) string {
-	return "ws://" + addr + "/rpc/v0"
-}
-
-func apiHeaders(token string) http.Header {
-	headers := http.Header{}
-	headers.Add("Authorization", "Bearer "+token)
-	return headers
 }

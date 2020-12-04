@@ -39,7 +39,11 @@ var (
 	getFailure  = stats.Int64("get_failure", "Number of get requests that failed", stats.UnitDimensionless)
 
 	gonudbRecordCount = stats.Int64("gonudb_record_count", "Number of records reported by the gonudb store", stats.UnitDimensionless)
-	gonudbRate        = stats.Float64("gonudb_rate_bytes_per_second", "Date write rate reported by the gonudb store", stats.UnitDimensionless)
+	gonudbRate        = stats.Float64("gonudb_rate_bytes_per_second", "Data write rate reported by the gonudb store", stats.UnitDimensionless)
+
+	circuitStatus  = stats.Int64("circuit_status", "Status of the lotus node circuit breaker, 0 when closed, 1 when open", stats.UnitDimensionless)
+	circuitRequest = stats.Int64("circuit_request", "Number of requests through the lotus node circuit breaker", stats.UnitDimensionless)
+	circuitFailure = stats.Int64("circuit_failure", "Number of failed requests through the lotus node circuit breaker", stats.UnitDimensionless)
 )
 
 func startTimer(ctx context.Context, m *stats.Float64Measure) func() {
@@ -48,6 +52,10 @@ func startTimer(ctx context.Context, m *stats.Float64Measure) func() {
 		elapsedms := time.Since(start).Seconds() * 1000
 		stats.Record(ctx, m.M(elapsedms))
 	}
+}
+
+func reportMeasurement(ctx context.Context, m stats.Measurement) {
+	stats.RecordWithOptions(ctx, stats.WithMeasurements(m))
 }
 
 func reportEvent(ctx context.Context, m *stats.Int64Measure) {
@@ -168,6 +176,22 @@ func initMetricReporting(reportingInterval time.Duration) error {
 			Name:        gonudbRate.Name(),
 			Measure:     gonudbRate,
 			Aggregation: view.LastValue(),
+		},
+
+		{
+			Name:        circuitStatus.Name(),
+			Measure:     circuitStatus,
+			Aggregation: view.LastValue(),
+		},
+		{
+			Name:        circuitRequest.Name() + "_total",
+			Measure:     circuitRequest,
+			Aggregation: view.Sum(),
+		},
+		{
+			Name:        circuitFailure.Name() + "_total",
+			Measure:     circuitFailure,
+			Aggregation: view.Sum(),
 		},
 	}
 

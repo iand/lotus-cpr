@@ -2,20 +2,16 @@ package main
 
 import (
 	"context"
-	// "fmt"
 
 	"github.com/filecoin-project/go-address"
-	"github.com/filecoin-project/go-jsonrpc/auth"
-	blocks "github.com/ipfs/go-block-format"
-	// "github.com/filecoin-project/go-bitfield"
 	"github.com/filecoin-project/go-bitfield"
+	"github.com/filecoin-project/go-jsonrpc/auth"
 	"github.com/filecoin-project/go-state-types/abi"
-	// "github.com/filecoin-project/go-state-types/dline"
-	// "github.com/filecoin-project/go-state-types/network"
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/go-logr/logr"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 )
 
@@ -25,13 +21,44 @@ type BlockCache interface {
 	SetUpstream(BlockCache)
 }
 
+type ProxyAPI interface {
+	AuthVerify(ctx context.Context, token string) ([]auth.Permission, error)
+	AuthNew(ctx context.Context, perms []auth.Permission) ([]byte, error)
+	Version(ctx context.Context) (api.Version, error)
+	ChainNotify(ctx context.Context) (<-chan []*api.HeadChange, error)
+	ChainHead(ctx context.Context) (*types.TipSet, error)
+	ChainGetBlock(ctx context.Context, obj cid.Cid) (*types.BlockHeader, error)
+	ChainGetTipSet(ctx context.Context, tsk types.TipSetKey) (*types.TipSet, error)
+	ChainGetBlockMessages(ctx context.Context, blockCid cid.Cid) (*api.BlockMessages, error)
+	ChainGetParentReceipts(ctx context.Context, blockCid cid.Cid) ([]*types.MessageReceipt, error)
+	ChainGetParentMessages(ctx context.Context, blockCid cid.Cid) ([]api.Message, error)
+	ChainGetTipSetByHeight(ctx context.Context, h abi.ChainEpoch, tsk types.TipSetKey) (*types.TipSet, error)
+	ChainReadObj(ctx context.Context, obj cid.Cid) ([]byte, error)
+	ChainHasObj(ctx context.Context, obj cid.Cid) (bool, error)
+	ChainStatObj(ctx context.Context, obj cid.Cid, base cid.Cid) (api.ObjStat, error)
+	ChainGetGenesis(ctx context.Context) (*types.TipSet, error)
+	ChainTipSetWeight(ctx context.Context, tsk types.TipSetKey) (types.BigInt, error)
+	ChainGetNode(ctx context.Context, path string) (*api.IpldObject, error)
+	ChainGetMessage(ctx context.Context, mc cid.Cid) (*types.Message, error)
+	ChainGetPath(ctx context.Context, from types.TipSetKey, to types.TipSetKey) ([]*api.HeadChange, error)
+	StateChangedActors(ctx context.Context, old cid.Cid, new cid.Cid) (map[string]types.Actor, error)
+	StateGetReceipt(ctx context.Context, msg cid.Cid, tsk types.TipSetKey) (*types.MessageReceipt, error)
+	StateListMiners(ctx context.Context, tsk types.TipSetKey) ([]address.Address, error)
+	StateListActors(ctx context.Context, tsk types.TipSetKey) ([]address.Address, error)
+	StateGetActor(ctx context.Context, actor address.Address, tsk types.TipSetKey) (*types.Actor, error)
+	StateReadState(ctx context.Context, actor address.Address, tsk types.TipSetKey) (*api.ActorState, error)
+	StateMinerSectors(ctx context.Context, addr address.Address, sectorNos *bitfield.BitField, tsk types.TipSetKey) ([]*miner.SectorOnChainInfo, error)
+	StateMinerPower(ctx context.Context, addr address.Address, tsk types.TipSetKey) (*api.MinerPower, error)
+	StateVMCirculatingSupplyInternal(ctx context.Context, tsk types.TipSetKey) (api.CirculatingSupply, error)
+}
+
 type Proxy struct {
-	node    api.FullNode
+	node    ProxyAPI
 	cache   BlockCache
 	tlogger logr.Logger // request tracing
 }
 
-func NewAPIProxy(node api.FullNode, cache BlockCache, logger logr.Logger) *Proxy {
+func NewAPIProxy(node ProxyAPI, cache BlockCache, logger logr.Logger) *Proxy {
 	if logger == nil {
 		logger = logr.Discard()
 	}

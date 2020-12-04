@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/filecoin-project/lotus/api"
 	"github.com/go-logr/logr"
 	"github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -13,12 +12,17 @@ import (
 
 var _ (BlockCache) = (*NodeBlockCache)(nil)
 
+type NodeBlockCacheAPI interface {
+	ChainHasObj(ctx context.Context, obj cid.Cid) (bool, error)
+	ChainReadObj(ctx context.Context, obj cid.Cid) ([]byte, error)
+}
+
 type NodeBlockCache struct {
-	node    api.FullNode
+	node    NodeBlockCacheAPI
 	tlogger logr.Logger // request tracing
 }
 
-func NewNodeBlockCache(node api.FullNode, logger logr.Logger) *NodeBlockCache {
+func NewNodeBlockCache(node NodeBlockCacheAPI, logger logr.Logger) *NodeBlockCache {
 	if logger == nil {
 		logger = logr.Discard()
 	}

@@ -11,6 +11,7 @@ require (
 	github.com/filecoin-project/lotus v1.2.1
 	github.com/go-logr/logr v0.3.0
 	github.com/gorilla/mux v1.7.4
+	github.com/iand/circuit v0.0.4
 	github.com/iand/gonudb v0.2.0
 	github.com/iand/logfmtr v0.1.5
 	github.com/ipfs/go-block-format v0.0.2
