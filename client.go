@@ -145,7 +145,6 @@ func (a *apiClient) withApi(ctx context.Context, fn func(api lotusapi.FullNode) 
 		reportEvent(ctx, circuitRequest)
 		err := fn(api)
 		if err != nil {
-			a.logger.Error(err, "with api")
 			reportEvent(ctx, circuitFailure)
 		}
 

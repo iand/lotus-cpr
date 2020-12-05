@@ -86,6 +86,24 @@ func main() {
 				EnvVars: []string{"LOTUS_CPR_DIAG"},
 				Value:   ":33112",
 			},
+			&cli.IntFlag{
+				Name:    "api-concurrency",
+				Usage:   "Maximum number of concurrent requests to make to the Lotus node API before triggering disconnection.",
+				Value:   2000,
+				EnvVars: []string{"LOTUS_CPR_API_CONCURRENCY"},
+			},
+			&cli.IntFlag{
+				Name:    "api-errors",
+				Usage:   "Maximum number of errors received from the Lotus node API before triggering disconnection.",
+				Value:   8,
+				EnvVars: []string{"LOTUS_CPR_API_ERRORS"},
+			},
+			&cli.DurationFlag{
+				Name:    "disconnect-timeout",
+				Usage:   "Tim to wait after a disconnect from the Lotus node before attempting to reconnect.",
+				Value:   30 * time.Second,
+				EnvVars: []string{"LOTUS_CPR_DISCONNECT_TIMEOUT"},
+			},
 		},
 		Action:          run,
 		HideHelpCommand: true,
@@ -120,11 +138,7 @@ func run(cc *cli.Context) error {
 		}
 	}
 
-	errorThreshold := 8
-	maxConcurrency := 2000
-	resetTimeout := 30 * time.Second
-
-	client, err := newAPIClient(cc.String("api"), cc.String("api-token"), errorThreshold, maxConcurrency, resetTimeout, logfmtr.NewNamed("client"))
+	client, err := newAPIClient(cc.String("api"), cc.String("api-token"), cc.Int("api-errors"), cc.Int("api-concurrency"), cc.Duration("disconnect-timeout"), logfmtr.NewNamed("client"))
 	if err != nil {
 		return fmt.Errorf("failed to create api client: %w", err)
 	}
