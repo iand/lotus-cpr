@@ -50,7 +50,7 @@ type apiClient struct {
 	closer jsonrpc.ClientCloser
 }
 
-func newAPIClient(maddr string, token string, logger logr.Logger) (*apiClient, error) {
+func newAPIClient(maddr string, token string, errorThreshold int, maxConcurrency int, resetTimeout time.Duration, logger logr.Logger) (*apiClient, error) {
 	parsedAddr, err := ma.NewMultiaddr(maddr)
 	if err != nil {
 		return nil, fmt.Errorf("parse api multiaddress: %w", err)
@@ -66,9 +66,9 @@ func newAPIClient(maddr string, token string, logger logr.Logger) (*apiClient, e
 		uri:     apiURI(addr),
 		headers: apiHeaders(token),
 		cb: &circuit.Breaker{
-			Threshold:    8,                // number of consecutive errors allowed before the circuit is opened
-			Concurrency:  100,              // number of concurrent requests allowed
-			ResetTimeout: 30 * time.Second, // time to wait once the circuit breaker trips open before allowing another attempt
+			Threshold:    uint32(errorThreshold), // number of consecutive errors allowed before the circuit is opened
+			Concurrency:  uint32(maxConcurrency), // number of concurrent requests allowed
+			ResetTimeout: resetTimeout,           // time to wait once the circuit breaker trips open before allowing another attempt
 		},
 		logger: logger.V(LogLevelInfo),
 	}

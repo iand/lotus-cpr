@@ -120,7 +120,11 @@ func run(cc *cli.Context) error {
 		}
 	}
 
-	client, err := newAPIClient(cc.String("api"), cc.String("api-token"), logfmtr.NewNamed("client"))
+	errorThreshold := 8
+	maxConcurrency := 2000
+	resetTimeout := 30 * time.Second
+
+	client, err := newAPIClient(cc.String("api"), cc.String("api-token"), errorThreshold, maxConcurrency, resetTimeout, logfmtr.NewNamed("client"))
 	if err != nil {
 		return fmt.Errorf("failed to create api client: %w", err)
 	}
