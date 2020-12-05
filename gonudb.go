@@ -17,14 +17,16 @@ var _ (BlockCache) = (*DBBlockCache)(nil)
 type DBBlockCache struct {
 	store    *gonudb.Store
 	upstream BlockCache
+	logger   logr.Logger
 }
 
-func NewDBBlockCache(s *gonudb.Store) *DBBlockCache {
+func NewDBBlockCache(s *gonudb.Store, logger logr.Logger) *DBBlockCache {
 	if logger == nil {
 		logger = logr.Discard()
 	}
 	return &DBBlockCache{
-		store: s,
+		store:  s,
+		logger: logger.V(LogLevelInfo),
 	}
 }
 
@@ -89,24 +91,37 @@ func (d *DBBlockCache) fillFromUpstream(ctx context.Context, c cid.Cid) ([]byte,
 	blk, err := d.upstream.Get(ctx, c)
 	if err != nil {
 		reportEvent(ctx, fillFailure)
+		d.logger.Error(err, "upstream get", "cid", c.String())
 		return nil, err
 	}
 
 	data := blk.RawData()
+
+	// gonudb doesn't support zero sized blocks so don't add them
+	if len(data) == 0 {
+		reportEvent(ctx, fillSuccess)
+		reportSize(ctx, fillSize, len(data))
+		return data, nil
+	}
+
 	// Only insert if the block data and cid match, since we can't delete from the store
 	chkc, err := c.Prefix().Sum(data)
 	if err != nil {
 		reportEvent(ctx, fillFailure)
+		d.logger.Error(err, "compute block hash", "cid", c.String())
 		return nil, err
 	}
 
 	if !chkc.Equals(c) {
 		reportEvent(ctx, fillFailure)
+		d.logger.Error(err, "wrong block hash", "cid", c.String(), "hash", chkc.String())
 		return nil, blocks.ErrWrongHash
 	}
 
 	if err := d.store.Insert(c.String(), data); err != nil {
 		reportEvent(ctx, fillFailure)
+		d.logger.Error(err, "insert", "cid", c.String())
+		return data, nil
 	}
 	reportEvent(ctx, fillSuccess)
 	reportSize(ctx, fillSize, len(data))

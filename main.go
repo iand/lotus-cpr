@@ -99,8 +99,6 @@ func main() {
 	}
 }
 
-var logger = logfmtr.New().V(LogLevelInfo)
-
 func run(cc *cli.Context) error {
 	ctx, cancel := context.WithCancel(cc.Context)
 	defer cancel()
@@ -112,6 +110,8 @@ func run(cc *cli.Context) error {
 		loggerOpts.Colorize = true
 	}
 	logfmtr.UseOptions(loggerOpts)
+
+	logger := logfmtr.New().V(LogLevelInfo)
 
 	// Init metric reporting if required
 	reportMetrics := false
@@ -144,6 +144,7 @@ func run(cc *cli.Context) error {
 	}
 
 	if cc.String("store") != "" {
+		logger.Info("Opening store", "path", cc.String("store"))
 		s, err := openStore(ctx, cc.String("store"))
 		if err != nil {
 			return fmt.Errorf("failed to open gonudb store: %w", err)
@@ -155,7 +156,7 @@ func run(cc *cli.Context) error {
 			}
 		}()
 
-		dbCache := NewDBBlockCache(s)
+		dbCache := NewDBBlockCache(s, logfmtr.NewNamed("gonudb"))
 
 		if reportMetrics {
 			go func() {
@@ -274,7 +275,6 @@ func openStore(ctx context.Context, path string) (*gonudb.Store, error) {
 	if err != nil {
 		var pathErr *os.PathError
 		if errors.As(err, &pathErr) && os.IsNotExist(pathErr) {
-			logger.Info("Creating store", "path", path)
 			err := gonudb.CreateStore(
 				datPath,
 				keyPath,
@@ -292,8 +292,7 @@ func openStore(ctx context.Context, path string) (*gonudb.Store, error) {
 		}
 	}
 
-	logger.Info("Opening store", "path", path)
-	s, err := gonudb.OpenStore(datPath, keyPath, logPath, &gonudb.StoreOptions{Logger: logger.WithName("gonudb").V(LogLevelDiagnostics)})
+	s, err := gonudb.OpenStore(datPath, keyPath, logPath, &gonudb.StoreOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open store: %w", err)
 	}
@@ -316,7 +315,6 @@ func connect(ctx context.Context, apiAddr, apiToken string) (api.FullNode, jsonr
 		return nil, nil, fmt.Errorf("new full node rpc: %w", err)
 	}
 
-	logger.Info("Connected to lotus", "addr", apiAddr)
 	return api, closer, nil
 }
 

@@ -158,7 +158,6 @@ func (p *Proxy) ChainReadObj(ctx context.Context, obj cid.Cid) ([]byte, error) {
 	}
 	blk, err := p.cache.Get(ctx, obj)
 	if err != nil {
-		logger.Error(err, "cache get", "cid", obj)
 		return p.node.ChainReadObj(ctx, obj)
 	}
 
@@ -171,7 +170,6 @@ func (p *Proxy) ChainHasObj(ctx context.Context, obj cid.Cid) (bool, error) {
 	}
 	has, err := p.cache.Has(ctx, obj)
 	if err != nil {
-		logger.Error(err, "cache has", "cid", obj)
 		return p.node.ChainHasObj(ctx, obj)
 	}
 	return has, nil
