@@ -134,15 +134,14 @@ func (a *apiClient) connect() {
 }
 
 func (a *apiClient) withApi(ctx context.Context, fn func(api lotusapi.FullNode) error) error {
+	a.mu.Lock()
+	api := a.api
+	a.mu.Unlock()
+	if api == nil {
+		return ErrLotusUnavailable
+	}
 	// pass the function through the circuit breaker
 	return a.cb.Do(ctx, func() error {
-		a.mu.Lock()
-		api := a.api
-		a.mu.Unlock()
-		if api == nil {
-			return ErrLotusUnavailable
-		}
-
 		reportEvent(ctx, circuitRequest)
 		err := fn(api)
 		if err != nil {
