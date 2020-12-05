@@ -93,7 +93,7 @@ func (a *apiClient) Close() {
 }
 
 func (a *apiClient) onCircuitOpen(r circuit.OpenReason) {
-	a.logger.Info("Disconnecting from lotus", "maddr", a.maddr)
+	a.logger.Info("Disconnecting from lotus", "maddr", a.maddr, "reason", reason(r))
 	reportMeasurement(context.Background(), circuitStatus.M(1))
 
 	a.mu.Lock()
@@ -599,4 +599,17 @@ func (a *apiClient) StateVMCirculatingSupplyInternal(ctx context.Context, tsk ty
 	}
 
 	return r, e
+}
+
+func reason(r circuit.OpenReason) string {
+	switch r {
+	case circuit.OpenReasonThreshold:
+		return "error threshold breached"
+	case circuit.OpenReasonConcurrency:
+		return "concurrency limit breached"
+	case circuit.OpenReasonTrial:
+		return "trial request failed"
+	default:
+		return fmt.Sprintf("unknown (%d)", r)
+	}
 }
