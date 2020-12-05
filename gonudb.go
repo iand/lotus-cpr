@@ -32,8 +32,7 @@ func NewDBBlockCache(s *gonudb.Store, logger logr.Logger) *DBBlockCache {
 
 func (d *DBBlockCache) Has(ctx context.Context, c cid.Cid) (bool, error) {
 	ctx = cacheContext(ctx, "gonudb")
-	cstr := c.String()
-	_, err := d.store.FetchReader(cstr)
+	_, err := d.store.FetchReader(string(c.Hash()))
 	if err != nil {
 		data, err := d.fillFromUpstream(ctx, c)
 		if err != nil {
@@ -51,8 +50,7 @@ func (d *DBBlockCache) Get(ctx context.Context, c cid.Cid) (blocks.Block, error)
 	stop := startTimer(ctx, getDuration)
 	defer stop()
 
-	cstr := c.String()
-	r, err := d.store.FetchReader(cstr)
+	r, err := d.store.FetchReader(string(c.Hash()))
 	if err != nil {
 		data, err := d.fillFromUpstream(ctx, c)
 		if err != nil {
@@ -118,7 +116,7 @@ func (d *DBBlockCache) fillFromUpstream(ctx context.Context, c cid.Cid) ([]byte,
 		return nil, blocks.ErrWrongHash
 	}
 
-	if err := d.store.Insert(c.String(), data); err != nil {
+	if err := d.store.Insert(string(c.Hash()), data); err != nil {
 		reportEvent(ctx, fillFailure)
 		d.logger.Error(err, "insert", "cid", c.String())
 		return data, nil
