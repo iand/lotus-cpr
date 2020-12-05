@@ -30,6 +30,7 @@ var (
 	fillRequest  = stats.Int64("fill_request", "Number of fill requests", stats.UnitDimensionless)
 	fillFailure  = stats.Int64("fill_failure", "Number of failed fills", stats.UnitDimensionless)
 	fillSuccess  = stats.Int64("fill_success", "Number of successful fills", stats.UnitDimensionless)
+	fillZero     = stats.Int64("fill_zero", "Number of zero sized blocks ignored", stats.UnitDimensionless)
 
 	getDuration = stats.Float64("get_duration_ms", "Time taken to get a block via the cache", stats.UnitMilliseconds)
 	getSize     = stats.Int64("get_size_bytes", "Size of block retrieved for get", stats.UnitBytes)
@@ -90,6 +91,12 @@ func initMetricReporting(reportingInterval time.Duration) error {
 		{
 			Name:        fillSuccess.Name() + "_total",
 			Measure:     fillSuccess,
+			Aggregation: view.Sum(),
+			TagKeys:     []tag.Key{cacheTag},
+		},
+		{
+			Name:        fillZero.Name() + "_total",
+			Measure:     fillZero,
 			Aggregation: view.Sum(),
 			TagKeys:     []tag.Key{cacheTag},
 		},

@@ -96,8 +96,7 @@ func (d *DBBlockCache) fillFromUpstream(ctx context.Context, c cid.Cid) ([]byte,
 
 	// gonudb doesn't support zero sized blocks so don't add them
 	if len(data) == 0 {
-		reportEvent(ctx, fillSuccess)
-		reportSize(ctx, fillSize, len(data))
+		reportEvent(ctx, fillZero)
 		return data, nil
 	}
 
