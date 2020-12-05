@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-logr/logr"
 	"github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-ipfs-blockstore"
@@ -22,10 +21,6 @@ type HttpBlockCache struct {
 }
 
 func NewHttpBlockCache(base string, name string) *HttpBlockCache {
-	if logger == nil {
-		logger = logr.Discard()
-	}
-
 	if !strings.HasSuffix(base, "/") {
 		base += "/"
 	}
