@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io/ioutil"
 
 	"github.com/go-logr/logr"
@@ -115,8 +116,11 @@ func (d *DBBlockCache) fillFromUpstream(ctx context.Context, c cid.Cid) ([]byte,
 	}
 
 	if err := d.store.Insert(string(c.Hash()), data); err != nil {
-		reportEvent(ctx, fillFailure)
-		d.logger.Error(err, "insert", "cid", c.String())
+		// Data may have been inserted while we were fetching
+		if !errors.Is(err, gonudb.ErrKeyExists) {
+			reportEvent(ctx, fillFailure)
+			d.logger.Error(err, "insert", "cid", c.String())
+		}
 		return data, nil
 	}
 	reportEvent(ctx, fillSuccess)
