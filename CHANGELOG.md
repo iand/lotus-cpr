@@ -16,6 +16,19 @@ These are changes that will probably be included in the next release.
  
 ### Removed
 
+
+## [v0.1.0] - 2020-12-05
+
+### Added
+
+ * Record cache metrics and export for prometheus
+ * Add circuit breaker between cache and lotus node
+
+### Changed
+
+ * Avoid writing zero sized blocks to store
+ * Use block hash as key
+
 ## [v0.1.0] - 2020-11-24
 
 Initial release
