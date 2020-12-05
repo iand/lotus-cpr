@@ -422,6 +422,8 @@ github.com/huin/goupnp v0.0.0-20180415215157-1395d1447324/go.mod h1:MZ2ZmwcBpvOo
 github.com/huin/goupnp v1.0.0 h1:wg75sLpL6DZqwHQN6E1Cfk6mtfzS45z8OV+ic+DtHRo=
 github.com/huin/goupnp v1.0.0/go.mod h1:n9v9KO1tAxYH82qOn+UTIFQDmx5n1Zxd/ClZDMX7Bnc=
 github.com/huin/goutil v0.0.0-20170803182201-1ca381bf3150/go.mod h1:PpLOETDnJ0o3iZrZfqZzyLl6l7F3c6L1oWn7OICBi6o=
+github.com/iand/circuit v0.0.4 h1:4JO088X6flsqqC0Q7E6KmGunDvqPbu0EaYLCLYYPz3I=
+github.com/iand/circuit v0.0.4/go.mod h1:rytd7t1hTWRRd0xXXfzMpeg0iiBUS1drJlxxfS97KQ0=
 github.com/iand/gonudb v0.2.0 h1:gNgZ7YqdTpEs+fgWrHpk0ZTMCuTZLbnaLD26dZ6x8v4=
 github.com/iand/gonudb v0.2.0/go.mod h1:bWj5rN7NDrpdS7Lqj7t7NYXOZGoXQTwSpgGg68t0hcc=
 github.com/iand/logfmtr v0.1.4/go.mod h1:5syjcF+yeARZoDxu7YZEbJppinl/HavvhRLelY1Hh+s=
