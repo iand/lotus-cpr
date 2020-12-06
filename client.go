@@ -50,7 +50,7 @@ type apiClient struct {
 	closer jsonrpc.ClientCloser
 }
 
-func newAPIClient(maddr string, token string, logger logr.Logger) (*apiClient, error) {
+func newAPIClient(maddr string, token string, errorThreshold int, maxConcurrency int, resetTimeout time.Duration, logger logr.Logger) (*apiClient, error) {
 	parsedAddr, err := ma.NewMultiaddr(maddr)
 	if err != nil {
 		return nil, fmt.Errorf("parse api multiaddress: %w", err)
@@ -66,9 +66,9 @@ func newAPIClient(maddr string, token string, logger logr.Logger) (*apiClient, e
 		uri:     apiURI(addr),
 		headers: apiHeaders(token),
 		cb: &circuit.Breaker{
-			Threshold:    8,                // number of consecutive errors allowed before the circuit is opened
-			Concurrency:  100,              // number of concurrent requests allowed
-			ResetTimeout: 30 * time.Second, // time to wait once the circuit breaker trips open before allowing another attempt
+			Threshold:    uint32(errorThreshold), // number of consecutive errors allowed before the circuit is opened
+			Concurrency:  uint32(maxConcurrency), // number of concurrent requests allowed
+			ResetTimeout: resetTimeout,           // time to wait once the circuit breaker trips open before allowing another attempt
 		},
 		logger: logger.V(LogLevelInfo),
 	}
@@ -93,7 +93,7 @@ func (a *apiClient) Close() {
 }
 
 func (a *apiClient) onCircuitOpen(r circuit.OpenReason) {
-	a.logger.Info("Disconnecting from lotus", "maddr", a.maddr)
+	a.logger.Info("Disconnecting from lotus", "maddr", a.maddr, "reason", reason(r))
 	reportMeasurement(context.Background(), circuitStatus.M(1))
 
 	a.mu.Lock()
@@ -134,15 +134,14 @@ func (a *apiClient) connect() {
 }
 
 func (a *apiClient) withApi(ctx context.Context, fn func(api lotusapi.FullNode) error) error {
+	a.mu.Lock()
+	api := a.api
+	a.mu.Unlock()
+	if api == nil {
+		return ErrLotusUnavailable
+	}
 	// pass the function through the circuit breaker
 	return a.cb.Do(ctx, func() error {
-		a.mu.Lock()
-		api := a.api
-		a.mu.Unlock()
-		if api == nil {
-			return ErrLotusUnavailable
-		}
-
 		reportEvent(ctx, circuitRequest)
 		err := fn(api)
 		if err != nil {
@@ -599,4 +598,17 @@ func (a *apiClient) StateVMCirculatingSupplyInternal(ctx context.Context, tsk ty
 	}
 
 	return r, e
+}
+
+func reason(r circuit.OpenReason) string {
+	switch r {
+	case circuit.OpenReasonThreshold:
+		return "error threshold breached"
+	case circuit.OpenReasonConcurrency:
+		return "concurrency limit breached"
+	case circuit.OpenReasonTrial:
+		return "trial request failed"
+	default:
+		return fmt.Sprintf("unknown (%d)", r)
+	}
 }
