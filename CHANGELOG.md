@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 These are changes that will probably be included in the next release.
 
 ### Added
+
+ * Add command line flags for circuit breaker parameters
+
  
 ### Fixed
 
@@ -17,7 +20,7 @@ These are changes that will probably be included in the next release.
 ### Removed
 
 
-## [v0.1.0] - 2020-12-05
+## [v0.2.0] - 2020-12-05
 
 ### Added
 
