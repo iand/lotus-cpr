@@ -100,7 +100,7 @@ func main() {
 			},
 			&cli.DurationFlag{
 				Name:    "disconnect-timeout",
-				Usage:   "Tim to wait after a disconnect from the Lotus node before attempting to reconnect.",
+				Usage:   "Time to wait after a disconnect from the Lotus node before attempting to reconnect.",
 				Value:   30 * time.Second,
 				EnvVars: []string{"LOTUS_CPR_DISCONNECT_TIMEOUT"},
 			},
